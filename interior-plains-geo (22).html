@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ryan and Ram's Awesome GeoGuessr</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0e1a; --surface:#111827; --surface2:#1c2a3a; --border:#1f3044;
+  --gold:#f5c842; --gold2:#e6a800; --green:#22c55e; --red:#ef4444;
+  --text:#e2e8f0; --muted:#64748b; --radius:10px; --shadow:0 4px 24px rgba(0,0,0,0.5);
+}
+html,body{height:100%;overflow:hidden;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);}
+#overlay{position:fixed;inset:0;background:radial-gradient(ellipse at 60% 40%,#0f2240 0%,#0a0e1a 70%);display:flex;justify-content:center;align-items:center;z-index:999;}
+.lobby-card{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:var(--radius);padding:40px 36px;width:420px;box-shadow:var(--shadow);}
+.lobby-card h1{font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:2px;color:var(--gold);margin-bottom:4px;}
+.lobby-card p.sub{color:var(--muted);font-size:0.85rem;margin-bottom:24px;}
+.field-group{display:flex;flex-direction:column;gap:10px;margin-bottom:18px;}
+label{font-size:0.78rem;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;}
+input{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:12px 14px;font-size:0.95rem;font-family:inherit;width:100%;outline:none;transition:border-color .2s;}
+input:focus{border-color:var(--gold);}
+input::placeholder{color:var(--muted);}
+.btn{padding:12px 18px;border:none;border-radius:var(--radius);font-weight:600;cursor:pointer;font-family:inherit;font-size:0.95rem;transition:all .15s;}
+.btn-gold{background:var(--gold);color:#000;width:100%;}
+.btn-gold:hover{background:var(--gold2);}
+.btn-gold:disabled{background:var(--muted);cursor:not-allowed;color:#333;}
+#lobby-error{color:var(--red);font-size:0.9rem;font-weight:600;margin-top:10px;min-height:20px;text-align:center;}
+.hint{font-size:0.78rem;color:var(--muted);text-align:center;}
+#game{display:none;height:100vh;width:100vw;position:relative;}
+#game:-webkit-full-screen{width:100vw;height:100vh;}
+#game:-moz-full-screen{width:100vw;height:100vh;}
+#game:fullscreen{width:100vw;height:100vh;}
+#pano{position:absolute;inset:0;width:100%;height:100%;}
+#map-panel{position:absolute;bottom:20px;right:20px;width:380px;height:300px;border-radius:var(--radius);border:2px solid var(--border);box-shadow:var(--shadow);transition:width .3s,height .3s;z-index:10;}
+#map-panel.expanded{width:600px;height:460px;}
+#map{width:100%;height:100%;border-radius:8px;cursor:crosshair;}
+#expand-btn{position:absolute;top:6px;right:6px;z-index:11;background:rgba(0,0,0,0.7);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:0.75rem;cursor:pointer;font-family:inherit;}
+#hud{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:var(--radius);padding:10px 20px;z-index:10;display:flex;gap:24px;align-items:center;backdrop-filter:blur(8px);box-shadow:var(--shadow);}
+.hud-item{text-align:center;}
+.hud-label{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.hud-value{font-size:1rem;font-weight:600;color:var(--text);}
+.hud-value.gold{color:var(--gold);}
+.hud-sep{width:1px;height:32px;background:var(--border);}
+#submit-area{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;}
+#submit-area button,#submit-area #turn-notice{pointer-events:auto;}
+#submit{padding:12px 32px;background:var(--gold);color:#000;border:none;border-radius:30px;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 0 24px rgba(245,200,66,0.35);transition:all .15s;}
+#submit:hover:not(:disabled){transform:scale(1.04);}
+#submit:disabled{background:var(--muted);cursor:not-allowed;color:#333;box-shadow:none;}
+#turn-notice{font-size:0.8rem;color:var(--muted);background:rgba(0,0,0,0.6);padding:4px 12px;border-radius:20px;}
+#waiting-state{display:none;pointer-events:none;flex-direction:column;align-items:center;gap:6px;}
+#waiting-state .waiting-pill{background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:30px;padding:12px 28px;font-size:1rem;font-weight:600;color:var(--gold);backdrop-filter:blur(8px);box-shadow:var(--shadow);display:flex;align-items:center;gap:8px;}
+#waiting-state .waiting-sub{font-size:0.8rem;color:var(--muted);background:rgba(0,0,0,0.6);padding:4px 14px;border-radius:20px;}
+#lb-panel{position:absolute;top:80px;left:14px;background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;z-index:10;min-width:160px;backdrop-filter:blur(8px);}
+#lb-panel h3{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:1px;color:var(--gold);margin-bottom:10px;}
+.lb-row{display:flex;justify-content:space-between;gap:20px;font-size:0.85rem;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+.lb-row:last-child{border-bottom:none;}
+.lb-name{color:var(--text);}
+.lb-name.me{color:var(--gold);}
+.lb-score{color:var(--green);font-weight:600;}
+#result-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);z-index:500;justify-content:center;align-items:center;}
+#result-modal.show{display:flex;}
+.result-card{background:var(--surface);border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:var(--radius);padding:24px 28px;width:560px;max-width:96vw;text-align:center;box-shadow:var(--shadow);animation:pop .25s ease;}
+@keyframes pop{from{transform:scale(.85);opacity:0;}to{transform:scale(1);opacity:1;}}
+.result-card h2{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:2px;color:var(--gold);margin-bottom:4px;}
+.result-dist{font-size:2.4rem;font-weight:700;color:var(--text);margin:12px 0 4px;}
+.result-pts{font-size:1.1rem;color:var(--green);font-weight:600;margin-bottom:20px;}
+.result-all{margin-bottom:20px;}
+.result-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.9rem;}
+.result-row:last-child{border-bottom:none;}
+.btn-next{background:var(--gold);color:#000;border:none;border-radius:30px;padding:12px 36px;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;}
+.btn-next:hover{background:var(--gold2);}
+#timer-ring{position:absolute;top:14px;right:20px;z-index:10;display:none;align-items:center;gap:10px;background:rgba(10,14,26,0.92);border:1px solid var(--border);border-radius:var(--radius);padding:8px 16px;backdrop-filter:blur(8px);}
+#timer-text{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;color:var(--gold);min-width:40px;text-align:center;}
+#timer-text.urgent{color:var(--red);animation:pulse .5s infinite alternate;}
+@keyframes pulse{from{opacity:1;}to{opacity:0.4;}}
+#timer-bar-wrap{width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+#timer-bar{height:100%;background:var(--gold);border-radius:3px;transition:width 1s linear,background .3s;}
+#step-settings{display:none;}
+.settings-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.settings-row label{font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.num-input{display:flex;align-items:center;gap:8px;}
+.num-input button{width:30px;height:30px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.num-input button:hover{background:var(--border);}
+.num-input span{font-size:1.1rem;font-weight:600;min-width:28px;text-align:center;}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin:0 2px;animation:bounce 1.2s infinite;}
+.dot:nth-child(2){animation-delay:.2s;}
+.dot:nth-child(3){animation-delay:.4s;}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);}40%{transform:translateY(-6px);}}
+.final-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #1f3044;font-size:0.95rem;}
+.final-row:last-child{border-bottom:none;}
+.final-row.me{background:rgba(245,200,66,0.06);border-radius:6px;padding:8px 6px;}
+.final-medal{font-size:1.2rem;width:28px;}
+.final-name{flex:1;color:#e2e8f0;}
+.final-score{color:#22c55e;font-weight:700;}
+</style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div id="overlay">
+  <div class="lobby-card">
+    <h1>Ryan and Ram's Awesome GeoGuessr</h1>
+    <p class="sub">Multiplayer Geography Challenge</p>
+    <div class="field-group">
+      <label for="name">Your Name</label>
+      <input id="name" placeholder="e.g. Prairie Pete (min 3 chars)" maxlength="20" minlength="3">
+    </div>
+    <div id="step-choose" style="display:flex;gap:10px;margin-bottom:6px;">
+      <button class="btn btn-gold" style="flex:1" onclick="showCreate()">🏠 Create Room</button>
+      <button class="btn" style="flex:1;background:#1c2a3a;color:white;border:1px solid #1f3044;" onclick="showJoin()">🔑 Join Room</button>
+    </div>
+    <div id="step-created" style="display:none;">
+      <div id="step-settings">
+        <div class="settings-row">
+          <label>Number of Rounds</label>
+          <div class="num-input">
+            <button onclick="adjustSetting('rounds',-1)">−</button>
+            <span id="set-rounds">5</span>
+            <button onclick="adjustSetting('rounds',1)">+</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <label>Timer (seconds)</label>
+          <div class="num-input">
+            <button onclick="adjustSetting('timer',-15)">−</button>
+            <span id="set-timer">60</span>
+            <button onclick="adjustSetting('timer',15)">+</button>
+          </div>
+        </div>
+        <div class="settings-row" style="margin-bottom:0;">
+          <label style="color:#64748b;font-size:0.72rem;">Max 10 rounds · Max 60s · 0 = no timer</label>
+        </div>
+        <hr style="border:none;border-top:1px solid #1f3044;margin:14px 0;">
+      </div>
+      <div style="background:#1c2a3a;border:1px solid #1f3044;border-radius:10px;padding:16px;text-align:center;margin-bottom:10px;">
+        <div style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Share this code with friends</div>
+        <div id="generated-code" style="font-family:'Bebas Neue',sans-serif;font-size:2.6rem;letter-spacing:6px;color:#f5c842;"></div>
+        <button onclick="copyCode()" style="margin-top:8px;background:transparent;border:1px solid #1f3044;color:#64748b;border-radius:6px;padding:4px 12px;font-size:0.75rem;cursor:pointer;font-family:inherit;">📋 Copy</button>
+      </div>
+      <button class="btn btn-gold" style="width:100%" onclick="enterRoom(true)">Start as Host →</button>
+    </div>
+    <div id="step-join" style="display:none;">
+      <div class="field-group" style="margin-bottom:10px;">
+        <label for="room">Room Code</label>
+        <input id="room" placeholder="Enter the code from your friend" maxlength="20" style="text-transform:uppercase;">
+      </div>
+      <button class="btn btn-gold" style="width:100%" onclick="enterRoom(false)">Join →</button>
+    </div>
+    <p id="lobby-error"></p>
+    <p class="hint" style="margin-top:10px;">Once everyone's in, the host starts the round.</p>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="game">
+  <div id="pano"></div>
+</div>
+
+<!-- Fullscreen Button -->
+<div id="fs-btn" style="position:absolute;top:14px;left:14px;z-index:10;display:none;">
+  <button onclick="toggleFullscreen()" style="background:rgba(10,14,26,0.92);border:1px solid #1f3044;color:#e2e8f0;border-radius:8px;padding:8px 12px;font-size:0.8rem;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px);">⛶ Fullscreen</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-item">
+    <div class="hud-label">Room</div>
+    <div class="hud-value" id="hud-room">—</div>
+  </div>
+  <div class="hud-sep"></div>
+  <div class="hud-item">
+    <div class="hud-label">Round</div>
+    <div class="hud-value gold" id="hud-round">—</div>
+  </div>
+  <div class="hud-sep"></div>
+  <div class="hud-item">
+    <div class="hud-label">Players</div>
+    <div class="hud-value" id="hud-turn">—</div>
+  </div>
+</div>
+
+<!-- Timer -->
+<div id="timer-ring">
+  <div>
+    <div class="hud-label" style="font-size:0.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Time</div>
+    <div id="timer-text">60</div>
+  </div>
+  <div>
+    <div id="timer-bar-wrap"><div id="timer-bar" style="width:100%"></div></div>
+  </div>
+</div>
+
+<!-- Leaderboard -->
+<div id="lb-panel">
+  <h3>🏆 Scores</h3>
+  <div id="leaderboard"></div>
+</div>
+
+<!-- Host Start Button (only shown to host before round begins) -->
+<div id="host-start-btn" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:30;text-align:center;">
+  <div style="background:rgba(10,14,26,0.95);border:2px solid #f5c842;border-radius:16px;padding:32px 40px;box-shadow:0 8px 40px rgba(0,0,0,0.6);">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:2px;color:#f5c842;margin-bottom:8px;">Ready to Play?</div>
+    <div style="color:#64748b;font-size:0.9rem;margin-bottom:20px;" id="host-player-count">Waiting for players to join…</div>
+    <button onclick="startRound(1)" style="padding:14px 40px;background:#f5c842;color:#000;border:none;border-radius:30px;font-size:1.1rem;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 0 24px rgba(245,200,66,0.4);">🚀 Start Round 1</button>
+  </div>
+</div>
+
+<!-- Map -->
+<div id="map-panel">
+  <button id="expand-btn" onclick="toggleMap()">⛶ Expand</button>
+  <div id="map"></div>
+</div>
+
+<!-- Submit area -->
+<div id="submit-area">
+  <button id="submit" disabled>📍 Submit Guess</button>
+  <div id="turn-notice">Click the map to place your guess</div>
+</div>
+
+<!-- Waiting state -->
+<div id="waiting-state">
+  <div class="waiting-pill">
+    ✅ Guess submitted <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+  </div>
+  <div class="waiting-sub" id="waiting-count">Waiting for other players…</div>
+</div>
+
+<!-- Result Modal -->
+<div id="result-modal">
+  <div class="result-card">
+    <h2>Round <span id="res-round">?</span> Results</h2>
+    <div id="res-map" style="width:100%;height:260px;border-radius:8px;margin:12px 0;border:1px solid #1f3044;"></div>
+    <div style="display:flex;gap:16px;justify-content:center;margin-bottom:4px;">
+      <span style="font-size:0.75rem;color:#64748b;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e;"></span>Actual</span>
+      <span style="font-size:0.75rem;color:#64748b;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f5c842;"></span>★ Your guess</span>
+      <span style="font-size:0.75rem;color:#64748b;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#60a5fa;"></span>Others</span>
+    </div>
+    <div class="result-dist" id="res-dist">—</div>
+    <div class="result-pts" id="res-pts">—</div>
+    <div class="result-all" id="res-all"></div>
+    <button class="btn-next" id="next-btn">Next Round →</button>
+  </div>
+</div>
+
+<!-- Final Scores Modal -->
+<div id="final-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:600;justify-content:center;align-items:center;backdrop-filter:blur(6px);">
+  <div style="background:#111827;border:1px solid #1f3044;border-top:3px solid #f5c842;border-radius:12px;width:560px;max-width:95vw;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.6);animation:pop .3s ease;">
+    <div style="padding:28px 32px 0;">
+      <div id="final-winner" style="font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:2px;color:#f5c842;text-align:center;margin-bottom:6px;"></div>
+      <div id="final-dist" style="text-align:center;color:#64748b;font-size:0.85rem;margin-bottom:18px;"></div>
+      <div id="final-podium" style="margin-bottom:20px;"></div>
+      <div style="display:flex;gap:8px;margin-bottom:6px;">
+        <div style="background:#22c55e;width:12px;height:12px;border-radius:50%;margin-top:2px;flex-shrink:0;"></div>
+        <span style="font-size:0.75rem;color:#64748b;">Actual location</span>
+        <div style="background:#f5c842;width:12px;height:12px;border-radius:50%;margin-top:2px;flex-shrink:0;margin-left:12px;"></div>
+        <span style="font-size:0.75rem;color:#64748b;">Your guess</span>
+      </div>
+    </div>
+    <div id="final-map" style="width:100%;height:280px;"></div>
+    <div style="padding:16px 32px;">
+      <button onclick="resetToHome()" style="width:100%;padding:12px;background:#f5c842;color:#000;border:none;border-radius:30px;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;">🏠 Back to Home</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCF4uGvZWkGAITwh6t9dgG2XPMjUgoXYwM",
+  authDomain: "minee-d9269.firebaseapp.com",
+  databaseURL: "https://minee-d9269-default-rtdb.firebaseio.com",
+  projectId: "minee-d9269",
+  storageBucket: "minee-d9269.firebasestorage.app",
+  messagingSenderId: "139099545204",
+  appId: "1:139099545204:web:c1060241e9e560a99fbb21"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const LOCATIONS = [
+  {lat:51.0430, lng:-114.0687, name:"Downtown Calgary, AB"},
+  {lat:50.7270, lng:-113.8650, name:"Saskatoon Farm, De Winton AB"},
+  {lat:53.5421, lng:-105.7904, name:"Boreal Forest: Christopher Lake, SK"},
+  {lat:56.3386, lng:-103.2953, name:"Northern Saskatchewan Boreal"},
+  {lat:59.5258, lng:-112.2214, name:"Wood Buffalo National Park"},
+  {lat:53.6025, lng:-105.8897, name:"Prince Albert Area, SK"},
+  {lat:52.2204, lng:-117.2242, name:"Columbia Icefield Skywalk, AB", noMove:true},
+  {lat:68.3576, lng:-133.7225, name:"Arctic Tundra, NWT", noMove:true},
+  {lat:68.9330, lng:-116.9295, name:"Cape Young, Nunavut", noMove:true},
+  {lat:58.4100, lng:-116.1275, name:"Wood Buffalo South, AB"},
+  {lat:51.9879, lng:-100.1440, name:"Manitoba Prairies"},
+  {lat:64.8695145, lng:-127.2316589, name:"Northwest Territories"},
+  {lat:49.0524299, lng:-113.9076323, name:"Southern Alberta"},
+  {lat:49.8868835, lng:-97.1290592, name:"Winnipeg, MB"},
+  {lat:53.3975478, lng:-117.5941528, name:"Hinton Area, AB"},
+  {lat:55.1715804, lng:-118.7993285, name:"Grande Prairie Area, AB"},
+  {lat:61.8597867, lng:-121.3504586, name:"Northwest Territories 2"},
+];
+
+let locationDeck = [];
+function getNextLocation() {
+  if (locationDeck.length === 0) {
+    locationDeck = [...LOCATIONS].sort(() => Math.random() - 0.5);
+  }
+  return locationDeck.pop();
+}
+
+let TOTAL_ROUNDS = 5, TIMER_SECS = 60, settingsRounds = 5, settingsTimer = 60;
+let map, panorama, guessMarker = null, answerMarker = null, guessLine = null;
+let playerName, roomCode, roomData = null;
+let myGuessSubmitted = false, mapExpanded = false, isFirstPlayer = false, gameStarted = false;
+let prevScores = {}; // scores frozen from end of last round
+let resultShown = false, lastLocationKey = null;
+let timerInterval = null;
+
+const GUESS_ICON = {
+  url: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42"><path d="M16 0 C7.16 0 0 7.16 0 16 C0 28 16 42 16 42 C16 42 32 28 32 16 C32 7.16 24.84 0 16 0Z" fill="#f5c842" stroke="#000" stroke-width="2"/><circle cx="16" cy="16" r="6" fill="#000" opacity="0.35"/></svg>'),
+  scaledSize: {width:32, height:42},
+  anchor: {x:16, y:42},
+};
+
+function showCreate() {
+  document.getElementById("lobby-error").textContent = "";
+  const code = generateCode();
+  document.getElementById("generated-code").textContent = code;
+  document.getElementById("step-choose").style.display = "none";
+  document.getElementById("step-created").style.display = "block";
+  document.getElementById("step-settings").style.display = "block";
+}
+
+function showJoin() {
+  document.getElementById("lobby-error").textContent = "";
+  document.getElementById("step-choose").style.display = "none";
+  document.getElementById("step-join").style.display = "block";
+}
+
+function generateCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join("");
+}
+
+function adjustSetting(key, delta) {
+  if (key === "rounds") {
+    settingsRounds = Math.max(1, Math.min(10, settingsRounds + delta));
+    document.getElementById("set-rounds").textContent = settingsRounds;
+  } else {
+    settingsTimer = Math.max(0, Math.min(60, settingsTimer + delta));
+    document.getElementById("set-timer").textContent = settingsTimer;
+  }
+}
+
+function copyCode() {
+  const code = document.getElementById("generated-code").textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = event.target;
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = "📋 Copy", 1500);
+  });
+}
+
+function enterRoom(asHost) {
+  const errEl = document.getElementById("lobby-error");
+  const nameInput = document.getElementById("name").value.trim();
+
+  if (!nameInput) { errEl.textContent = "⚠️ Enter your name first!"; return; }
+  if (nameInput.length < 3) { errEl.textContent = "⚠️ Name must be at least 3 characters."; return; }
+
+  let tempRoomCode;
+  if (asHost) {
+    tempRoomCode = document.getElementById("generated-code").textContent.trim();
+  } else {
+    tempRoomCode = (document.getElementById("room")?.value || "").trim().toUpperCase();
+    if (!tempRoomCode) { errEl.textContent = "⚠️ Enter a room code."; return; }
+  }
+
+  // Disable whichever button was clicked while we check
+  const allBtns = document.querySelectorAll(".lobby-card .btn");
+  allBtns.forEach(b => b.disabled = true);
+  errEl.style.color = "var(--muted)";
+  errEl.textContent = "Checking name…";
+
+  // Check if name is already taken in this room
+  db.ref("rooms/" + tempRoomCode + "/players/" + nameInput).once("value", snap => {
+    allBtns.forEach(b => b.disabled = false); // re-enable buttons no matter what
+
+    if (snap.exists()) {
+      // Name taken — stay on lobby, show clear error, do NOT advance
+      errEl.style.color = "var(--red)";
+      errEl.textContent = "⚠️ That name is already taken in this room — pick another!";
+      return; // <-- stops here, page never changes
+    }
+
+    // Name is free — proceed into game
+    playerName = nameInput;
+    roomCode = tempRoomCode;
+    isFirstPlayer = asHost;
+
+    errEl.textContent = "";
+    db.ref("rooms/" + roomCode + "/players/" + playerName).set({score:0, joined:Date.now()})
+      .catch(e => { errEl.style.color = "var(--red)"; errEl.textContent = "DB error: " + e.message; });
+
+    if (asHost) {
+      db.ref("rooms/" + roomCode + "/settings").set({totalRounds:settingsRounds, timerSecs:settingsTimer});
+    }
+
+    document.getElementById("overlay").style.display = "none";
+    document.getElementById("game").style.display = "block";
+    document.getElementById("hud-room").textContent = roomCode;
+    listenRoom();
+
+    if (asHost) {
+      document.getElementById("host-start-btn").style.display = "block";
+    }
+  });
+}
+
+function updateSubmitUI() {
+  const submitBtn = document.getElementById("submit");
+  const noticeEl  = document.getElementById("turn-notice");
+
+  if (myGuessSubmitted) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "⏳ Waiting for others…";
+    const total = Object.keys(roomData?.players || {}).length;
+    const done  = Object.keys(roomData?.results  || {}).length;
+    const left  = total - done;
+    noticeEl.textContent = left > 0
+      ? left + " player" + (left !== 1 ? "s" : "") + " still guessing…"
+      : "✅ All submitted!";
+    noticeEl.style.color = "var(--muted)";
+  } else {
+    submitBtn.textContent = "📍 Submit Guess";
+    submitBtn.disabled = !guessMarker;
+    if (!guessMarker) {
+      noticeEl.textContent = "Click the map to place your guess";
+      noticeEl.style.color = "var(--muted)";
+    } else {
+      noticeEl.textContent = "📍 Ready — hit Submit!";
+      noticeEl.style.color = "var(--gold)";
+    }
+  }
+}
+
+function initMap() {
+  map = new google.maps.Map(document.getElementById("map"), {
+    center:{lat:56,lng:-106}, zoom:4, mapTypeId:"roadmap",
+    disableDefaultUI:false, zoomControl:true, scrollwheel:true,
+    gestureHandling:"greedy", streetViewControl:false, mapTypeControl:false, fullscreenControl:false,
+  });
+  panorama = new google.maps.StreetViewPanorama(document.getElementById("pano"), {
+    disableDefaultUI:false, showRoadLabels:false, addressControl:false, linksControl:true, panControl:true,
+  });
+  panorama.addListener("status_changed", function() {
+    if (panorama.getStatus() === google.maps.StreetViewStatus.ZERO_RESULTS && isFirstPlayer && roomData) {
+      const loc = getNextLocation();
+      db.ref("rooms/" + roomCode).update({currentLocation:loc, roundStartTime:Date.now()});
+    }
+  });
+  map.addListener("click", function(e) {
+    // Block clicks if no round is active or already submitted
+    if (!roomData || !roomData.currentLocation || !roomData.round || myGuessSubmitted) return;
+    const lat = e.latLng.lat(), lng = e.latLng.lng();
+    if (guessMarker) {
+      guessMarker.setPosition(e.latLng);
+    } else {
+      guessMarker = new google.maps.Marker({
+        position:e.latLng, map:map, icon:GUESS_ICON,
+        title:"Your guess", zIndex:999, animation:google.maps.Animation.DROP,
+      });
+    }
+    try { db.ref("rooms/" + roomCode + "/guesses/" + playerName).set({lat, lng}); } catch(err) {}
+    updateSubmitUI();
+  });
+}
+
+let audioCtx = null;
+function playBeep(freq, vol, dur) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.frequency.value = freq; osc.type = "sine";
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+function startTimer(startTime, duration) {
+  stopTimer();
+  if (!duration || duration <= 0) { document.getElementById("timer-ring").style.display = "none"; return; }
+  document.getElementById("timer-ring").style.display = "flex";
+  let lastBeepedSecond = -1;
+  function tick() {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const remaining = Math.max(0, duration - elapsed);
+    const el = document.getElementById("timer-text");
+    const bar = document.getElementById("timer-bar");
+    const secondsLeft = Math.ceil(remaining);
+    el.textContent = secondsLeft;
+    el.classList.toggle("urgent", remaining <= 5);
+    bar.style.width = ((remaining / duration) * 100) + "%";
+    bar.style.background = remaining <= 5 ? "#ef4444" : remaining <= 20 ? "#f97316" : "#f5c842";
+    // Beep once per second for last 5 seconds
+    if (remaining > 0 && remaining <= 5 && secondsLeft !== lastBeepedSecond) {
+      lastBeepedSecond = secondsLeft;
+      if (secondsLeft === 1) {
+        // Last beep — higher pitch
+        playBeep(1047, 0.4, 0.15);
+      } else {
+        // Regular beep — same tone each second
+        playBeep(660, 0.3, 0.12);
+      }
+    }
+    if (remaining <= 0 && lastBeepedSecond !== 0) {
+      lastBeepedSecond = 0;
+      clearInterval(timerInterval); timerInterval = null;
+      el.textContent = '0'; bar.style.width = '0%';
+      if (!myGuessSubmitted) timeExpired();
+    }
+  }
+  tick();
+  timerInterval = setInterval(tick, 100);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  document.getElementById("timer-ring").style.display = "none";
+}
+
+function listenRoom() {
+  db.ref("rooms/" + roomCode).on("value", snap => {
+    roomData = snap.val();
+    if (!roomData) return;
+
+    if (roomData.settings) {
+      TOTAL_ROUNDS = roomData.settings.totalRounds || 5;
+      TIMER_SECS = roomData.settings.timerSecs || 0;
+    }
+
+    document.getElementById("hud-round").textContent = (roomData.round || "?") + " / " + TOTAL_ROUNDS;
+    const total = Object.keys(roomData.players || {}).length;
+    const done = Object.keys(roomData.results || {}).length;
+    document.getElementById("hud-turn").textContent = roomData.showResult ? "Results!" : done + "/" + total + " submitted";
+
+    // Set gameStarted for ALL players (including non-hosts) when a round is live
+    if (roomData.currentLocation && roomData.round) {
+      gameStarted = true;
+    }
+
+    if (roomData.currentLocation) {
+      const locKey = roomData.currentLocation.lat + "," + roomData.currentLocation.lng;
+      if (locKey !== lastLocationKey) {
+        lastLocationKey = locKey;
+        const loc = roomData.currentLocation;
+        panorama.setPosition({lat:loc.lat, lng:loc.lng});
+        panorama.setPov({heading:0, pitch:0});
+        panorama.setOptions({linksControl:!loc.noMove, clickToGo:!loc.noMove, panControl:!loc.noMove, zoomControl:!loc.noMove, scrollwheel:!loc.noMove});
+      }
+    }
+
+    if (roomData.roundStartTime && TIMER_SECS > 0 && !roomData.showResult) {
+      startTimer(roomData.roundStartTime, TIMER_SECS);
+    } else if (roomData.showResult) {
+      stopTimer();
+    }
+
+    renderLeaderboard(roomData.players);
+    // Update host start button player count
+    const hostBtn = document.getElementById("host-start-btn");
+    if (hostBtn && hostBtn.style.display !== "none") {
+      const playerNames = Object.keys(roomData.players || {});
+      document.getElementById("host-player-count").textContent =
+        playerNames.length === 1 ? "1 player in room (you)" :
+        playerNames.length + " players in room — " + playerNames.join(", ");
+    }
+    updateSubmitUI();
+
+    if (roomData.showResult && !resultShown) {
+      resultShown = true;
+      // Freeze current scores so next round leaderboard shows these until results reveal
+      prevScores = {};
+      Object.entries(roomData.players || {}).forEach(([n, d]) => { prevScores[n] = d.score || 0; });
+      showResult();
+    }
+    // When host starts next round, showResult flips false — close modal & reset for non-hosts
+    if (!roomData.showResult && resultShown) {
+      resultShown = false;
+      document.getElementById("result-modal").classList.remove("show");
+      if (guessMarker) { guessMarker.setMap(null); guessMarker = null; }
+      if (answerMarker) { answerMarker.setMap(null); answerMarker = null; }
+      if (guessLine) { guessLine.setMap(null); guessLine = null; }
+      if (map) { map.setCenter({lat:56,lng:-106}); map.setZoom(4); }
+      myGuessSubmitted = false;
+      updateSubmitUI();
+    }
+  });
+}
+
+function renderLeaderboard(players) {
+  if (!players) return;
+  const duringRound = roomData && !roomData.showResult;
+  // During an active round: show frozen previous scores for everyone
+  // During results: show live updated scores
+  const scoreMap = duringRound ? prevScores : players;
+  document.getElementById("leaderboard").innerHTML = Object.keys(players)
+    .sort((a, b) => {
+      const sA = scoreMap[a] !== undefined ? scoreMap[a] : (players[a].score || 0);
+      const sB = scoreMap[b] !== undefined ? scoreMap[b] : (players[b].score || 0);
+      return sB - sA;
+    })
+    .map(name => {
+      const score = scoreMap[name] !== undefined ? scoreMap[name] : 0;
+      return '<div class="lb-row"><span class="lb-name ' + (name===playerName?'me':'') + '">' + (name===playerName?'★ ':'') + name + '</span><span class="lb-score">' + score + '</span></div>';
+    })
+    .join("");
+}
+
+function startRound(roundNum) {
+  gameStarted = true;
+  document.getElementById("host-start-btn").style.display = "none";
+  if (guessMarker) { guessMarker.setMap(null); guessMarker = null; }
+  if (answerMarker) { answerMarker.setMap(null); answerMarker = null; }
+  if (guessLine) { guessLine.setMap(null); guessLine = null; }
+  if (map) { map.setCenter({lat:56,lng:-106}); map.setZoom(4); }
+  myGuessSubmitted = false;
+  document.getElementById("waiting-state").style.display = "none";
+  document.getElementById("submit-area").style.display = "flex";
+  document.getElementById("submit").disabled = true;
+  document.getElementById("turn-notice").textContent = "Click the map to place your guess";
+  document.getElementById("turn-notice").style.color = "var(--muted)";
+  const loc = getNextLocation();
+  db.ref("rooms/" + roomCode).update({
+    currentLocation:loc, round:roundNum, guesses:null,
+    showResult:false, lastResult:null, results:null, roundStartTime:Date.now(),
+  });
+}
+
+function submitGuess() {
+  if (!roomData || !roomData.currentLocation || !roomData.round || myGuessSubmitted) return;
+  const gPos = guessMarker ? guessMarker.getPosition() : null;
+  const savedGuess = roomData?.guesses?.[playerName];
+  const guess = savedGuess || (gPos ? {lat:gPos.lat(), lng:gPos.lng()} : null);
+  if (!guess) {
+    document.getElementById("turn-notice").textContent = "⚠️ Place a marker first!";
+    document.getElementById("turn-notice").style.color = "var(--red)";
+    return;
+  }
+  myGuessSubmitted = true;
+  updateSubmitUI();
+  const actual = new google.maps.LatLng(roomData.currentLocation.lat, roomData.currentLocation.lng);
+  const guessLL = new google.maps.LatLng(guess.lat, guess.lng);
+  const distKm = google.maps.geometry.spherical.computeDistanceBetween(guessLL, actual) / 1000;
+  const points = Math.max(0, Math.round(5000 - distKm * 2));
+  db.ref("rooms/" + roomCode + "/players/" + playerName + "/score").transaction(s => (s||0) + points);
+  db.ref("rooms/" + roomCode + "/results/" + playerName).set({distKm:Math.round(distKm), points});
+  // Wait briefly for the write to propagate, then check if all players have submitted
+  setTimeout(() => {
+    db.ref("rooms/" + roomCode + "/results").once("value", snap => {
+      const results = snap.val() || {};
+      db.ref("rooms/" + roomCode + "/players").once("value", snapP => {
+        const totalPlayers = Object.keys(snapP.val() || {}).length;
+        const totalResults = Object.keys(results).length;
+        if (totalResults >= totalPlayers) {
+          db.ref("rooms/" + roomCode).update({
+            showResult: true,
+            lastResult: {actualLat: roomData.currentLocation.lat, actualLng: roomData.currentLocation.lng}
+          });
+        }
+      });
+    });
+  }, 500);
+}
+
+document.getElementById("submit").onclick = submitGuess;
+
+function timeExpired() {
+  if (myGuessSubmitted) return;
+
+  // If they placed a marker, auto-submit it properly with full scoring
+  if (guessMarker) {
+    submitGuess();
+    return;
+  }
+
+  myGuessSubmitted = true;
+
+  // No marker placed — DNF with 0 points
+  const submitBtn = document.getElementById("submit");
+  const noticeEl = document.getElementById("turn-notice");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "⏳ Waiting for others…";
+  noticeEl.textContent = "⌛ Time's up — waiting for others…";
+  noticeEl.style.color = "var(--muted)";
+
+  // Write a DNF result so the count reaches totalPlayers
+  db.ref("rooms/" + roomCode + "/results/" + playerName).set({distKm: null, points: 0, dnf: true});
+
+  // Check if everyone is now accounted for
+  setTimeout(() => {
+    db.ref("rooms/" + roomCode + "/results").once("value", snap => {
+      const results = snap.val() || {};
+      db.ref("rooms/" + roomCode + "/players").once("value", snapP => {
+        const totalPlayers = Object.keys(snapP.val() || {}).length;
+        const totalResults = Object.keys(results).length;
+        if (totalResults >= totalPlayers) {
+          db.ref("rooms/" + roomCode).update({
+            showResult: true,
+            lastResult: {actualLat: roomData.currentLocation.lat, actualLng: roomData.currentLocation.lng}
+          });
+        }
+      });
+    });
+  }, 500);
+}
+
+function showResult() {
+  const r = roomData.lastResult;
+  if (!r) return;
+  const myResult = roomData.results?.[playerName];
+  const round = roomData.round || 1;
+  document.getElementById("res-round").textContent = round;
+  document.getElementById("res-dist").textContent = myResult && !myResult.dnf ? myResult.distKm.toLocaleString() + " km away" : "Time's up!";
+  document.getElementById("res-pts").textContent = myResult ? "+" + (myResult.points||0).toLocaleString() + " pts" : "+0 pts";
+  document.getElementById("res-all").innerHTML = Object.entries(roomData.results || {})
+    .sort((a,b) => a[1].distKm - b[1].distKm)
+    .map(([name, data]) => '<div class="result-row"><span>' + (name===playerName?"★ ":"") + name + '</span><span style="color:#64748b">' + (data.dnf ? 'no guess' : data.distKm.toLocaleString() + ' km') + '</span><span style="color:#22c55e">+' + (data.points||0).toLocaleString() + '</span></div>')
+    .join("");
+
+  const nextBtn = document.getElementById("next-btn");
+  if (round >= TOTAL_ROUNDS) {
+    nextBtn.textContent = "🏆 See Final Scores";
+    nextBtn.onclick = showFinalScores;
+    nextBtn.disabled = false;
+    nextBtn.style.opacity = "1";
+  } else {
+    nextBtn.textContent = isFirstPlayer ? "Next Round (" + (round+1) + "/" + TOTAL_ROUNDS + ") →" : "Waiting for host…";
+    nextBtn.disabled = !isFirstPlayer;
+    nextBtn.style.opacity = isFirstPlayer ? "1" : "0.5";
+    nextBtn.onclick = isFirstPlayer ? nextRound : null;
+  }
+  document.getElementById("result-modal").classList.add("show");
+
+  if (myResult && roomData.guesses?.[playerName]) {
+    const actual2 = new google.maps.LatLng(r.actualLat, r.actualLng);
+    const guess2 = new google.maps.LatLng(roomData.guesses[playerName].lat, roomData.guesses[playerName].lng);
+    if (answerMarker) answerMarker.setMap(null);
+    answerMarker = new google.maps.Marker({position:actual2, map, icon:{path:google.maps.SymbolPath.CIRCLE, scale:10, fillColor:"#22c55e", fillOpacity:1, strokeColor:"#fff", strokeWeight:2}});
+    if (guessLine) guessLine.setMap(null);
+    guessLine = new google.maps.Polyline({path:[guess2,actual2], strokeColor:"#f5c842", strokeOpacity:0.8, strokeWeight:2, map});
+    map.panTo(actual2);
+  }
+
+  setTimeout(() => {
+    const actual = {lat:r.actualLat, lng:r.actualLng};
+    const allGuesses = roomData.guesses || {};
+    const resMap = new google.maps.Map(document.getElementById("res-map"), {
+      center:actual, zoom:5, mapTypeId:"roadmap", disableDefaultUI:true, zoomControl:true, gestureHandling:"greedy"
+    });
+
+    // Player colors - cycle through these
+    const COLORS = ["#f5c842","#60a5fa","#f87171","#a78bfa","#34d399","#fb923c","#e879f9","#38bdf8"];
+    const playerList = Object.keys(roomData.players || {});
+    const bounds = new google.maps.LatLngBounds();
+
+    // Green actual location marker
+    new google.maps.Marker({
+      position:actual, map:resMap,
+      icon:{path:google.maps.SymbolPath.CIRCLE, scale:12, fillColor:"#22c55e", fillOpacity:1, strokeColor:"#fff", strokeWeight:2},
+      title:"Actual location", zIndex:999
+    });
+    bounds.extend(actual);
+
+    // Draw each player's guess
+    playerList.forEach((name, i) => {
+      const g = allGuesses[name];
+      if (!g) return;
+      const color = COLORS[i % COLORS.length];
+      const gp = {lat:g.lat, lng:g.lng};
+
+      // Marker
+      new google.maps.Marker({
+        position:gp, map:resMap, zIndex:10,
+        icon:{path:google.maps.SymbolPath.CIRCLE, scale:name===playerName?10:8, fillColor:color, fillOpacity:1, strokeColor:"#000", strokeWeight:1.5},
+        title:name
+      });
+
+      // Tiny name label - small overlay marker above the dot
+      new google.maps.Marker({
+        position:gp, map:resMap, zIndex:11,
+        label:{text:(name===playerName?"★ ":"")+name, color:"#fff", fontSize:"10px", fontWeight:"700"},
+        icon:{path:google.maps.SymbolPath.CIRCLE, scale:0, fillOpacity:0, strokeOpacity:0},
+      });
+
+      // Line to actual
+      new google.maps.Polyline({
+        path:[gp, actual], strokeColor:color,
+        strokeOpacity:0.75, strokeWeight:2, map:resMap
+      });
+      bounds.extend(gp);
+    });
+
+    resMap.fitBounds(bounds, 60);
+  }, 120);
+}
+
+function nextRound() {
+  resultShown = true;
+  document.getElementById("result-modal").classList.remove("show");
+  if (guessMarker) { guessMarker.setMap(null); guessMarker = null; }
+  if (answerMarker) { answerMarker.setMap(null); answerMarker = null; }
+  if (guessLine) { guessLine.setMap(null); guessLine = null; }
+  if (map) { map.setCenter({lat:56,lng:-106}); map.setZoom(4); }
+  myGuessSubmitted = false;
+  db.ref("rooms/" + roomCode + "/results").remove();
+  startRound((roomData.round || 1) + 1);
+}
+
+function showFinalScores() {
+  document.getElementById("result-modal").classList.remove("show");
+  const players = roomData.players || {};
+  const sorted = Object.entries(players).sort((a,b) => b[1].score - a[1].score);
+  document.getElementById("final-winner").textContent = "🏆 " + sorted[0][0] + " wins!";
+  document.getElementById("final-podium").innerHTML = sorted.map(([name, data], i) => {
+    const medal = i===0?"🥇":i===1?"🥈":i===2?"🥉":(i+1)+".";
+    return '<div class="final-row ' + (name===playerName?'me':'') + '"><span class="final-medal">' + medal + '</span><span class="final-name">' + name + '</span><span class="final-score">' + (data.score||0).toLocaleString() + ' pts</span></div>';
+  }).join("");
+  document.getElementById("final-modal").style.display = "flex";
+  const actual = roomData.currentLocation;
+  const myGuess = roomData.guesses?.[playerName];
+  setTimeout(() => {
+    const finalMap = new google.maps.Map(document.getElementById("final-map"), {
+      center:actual ? {lat:actual.lat,lng:actual.lng} : {lat:56,lng:-106},
+      zoom:actual?6:4, mapTypeId:"roadmap", disableDefaultUI:true, zoomControl:true, gestureHandling:"greedy",
+    });
+    if (actual) new google.maps.Marker({position:{lat:actual.lat,lng:actual.lng}, map:finalMap, icon:{path:google.maps.SymbolPath.CIRCLE,scale:12,fillColor:"#22c55e",fillOpacity:1,strokeColor:"#fff",strokeWeight:2}});
+    if (myGuess && actual) {
+      new google.maps.Marker({position:{lat:myGuess.lat,lng:myGuess.lng}, map:finalMap, icon:{path:google.maps.SymbolPath.CIRCLE,scale:10,fillColor:"#f5c842",fillOpacity:1,strokeColor:"#000",strokeWeight:2}});
+      new google.maps.Polyline({path:[{lat:myGuess.lat,lng:myGuess.lng},{lat:actual.lat,lng:actual.lng}], strokeColor:"#f5c842", strokeOpacity:0.8, strokeWeight:2, map:finalMap});
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend({lat:myGuess.lat,lng:myGuess.lng}); bounds.extend({lat:actual.lat,lng:actual.lng});
+      finalMap.fitBounds(bounds, 60);
+      const distKm = Math.round(google.maps.geometry.spherical.computeDistanceBetween(new google.maps.LatLng(myGuess.lat,myGuess.lng), new google.maps.LatLng(actual.lat,actual.lng)) / 1000);
+      document.getElementById("final-dist").textContent = "Your guess was " + distKm.toLocaleString() + " km away";
+    }
+  }, 100);
+}
+
+function toggleMap() {
+  mapExpanded = !mapExpanded;
+  document.getElementById("map-panel").classList.toggle("expanded", mapExpanded);
+  document.getElementById("expand-btn").textContent = mapExpanded ? "✕ Shrink" : "⛶ Expand";
+}
+
+function toggleFullscreen() {
+  const btn = document.querySelector("#fs-btn button");
+  if (!document.fullscreenElement) {
+    document.getElementById("game").requestFullscreen().then(() => {
+      btn.textContent = "✕ Exit Fullscreen";
+    }).catch(() => {});
+  } else {
+    document.exitFullscreen().then(() => {
+      btn.textContent = "⛶ Fullscreen";
+    }).catch(() => {});
+  }
+}
+
+// Update button text if user presses Escape
+document.addEventListener("fullscreenchange", () => {
+  const btn = document.querySelector("#fs-btn button");
+  if (btn) btn.textContent = document.fullscreenElement ? "✕ Exit Fullscreen" : "⛶ Fullscreen";
+});
+
+function resetToHome() {
+  // Hide game and final modal
+  document.getElementById("final-modal").style.display = "none";
+  document.getElementById("game").style.display = "none";
+
+  // Reset lobby UI back to initial state
+  document.getElementById("step-choose").style.display = "flex";
+  document.getElementById("step-created").style.display = "none";
+  document.getElementById("step-join").style.display = "none";
+  document.getElementById("step-settings").style.display = "none";
+  document.getElementById("lobby-error").textContent = "";
+  document.getElementById("name").value = "";
+  if (document.getElementById("room")) document.getElementById("room").value = "";
+
+  // Show the overlay again
+  document.getElementById("overlay").style.display = "flex";
+  document.getElementById("fs-btn").style.display = "none";
+
+  // Reset all game state
+  playerName = null;
+  roomData = null;
+  myGuessSubmitted = false;
+  isFirstPlayer = false;
+  gameStarted = false;
+  resultShown = false;
+  lastLocationKey = null;
+  if (guessMarker) { guessMarker.setMap(null); guessMarker = null; }
+  if (answerMarker) { answerMarker.setMap(null); answerMarker = null; }
+  if (guessLine) { guessLine.setMap(null); guessLine = null; }
+  stopTimer();
+
+  // Wipe the entire room from Firebase so scores/data don't persist for next game
+  if (roomCode) {
+    db.ref("rooms/" + roomCode).off();
+    db.ref("rooms/" + roomCode).remove();
+    roomCode = null;
+  }
+  prevScores = {};
+}
+</script>
+
+<!-- Google Maps -->
+<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBFnnZ1YtBKx_fAwLhkrmDmSrB3YyKqYOg&libraries=geometry&callback=initMap"></script>
+</body>
+</html>
