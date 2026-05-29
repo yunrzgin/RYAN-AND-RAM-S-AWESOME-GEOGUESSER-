@@ -353,15 +353,25 @@ async function detectLoop() {
       ctx.stroke();
     });
 
-    // Label badge — show class name + confidence
+    // Label badge — always use a safe system font so text never goes missing
     const labelText = `${p.class}  ${conf}%`;
-    ctx.font = 'bold 13px "Share Tech Mono", monospace';
-    const tw = ctx.measureText(labelText).width + 12;
-    const badgeY = by > 22 ? by - 22 : by;
-    ctx.fillStyle = col + 'cc';
-    ctx.fillRect(bx, badgeY, tw, 20);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(labelText, bx + 6, badgeY + 14);
+    const FONT = 'bold 14px monospace';
+    ctx.font = FONT;
+    const tw     = ctx.measureText(labelText).width + 16;
+    const BADGE_H = 24;
+    // Place badge above the box; if box is at the very top, place it inside
+    const badgeY = by >= BADGE_H ? by - BADGE_H : by;
+    // Dark background with coloured left accent bar
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillRect(bx, badgeY, tw, BADGE_H);
+    ctx.fillStyle = col;
+    ctx.fillRect(bx, badgeY, 4, BADGE_H);           // colour accent strip
+    // White text — always readable against the dark bg
+    ctx.font      = FONT;
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelText, bx + 10, badgeY + BADGE_H / 2);
+    ctx.textBaseline = 'alphabetic';                 // reset to default
 
     // Distance overlay on the largest (first) detected box
     if (predictions.indexOf(p) === 0 && distance > 0) {
