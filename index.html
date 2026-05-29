@@ -253,8 +253,9 @@ const ALLOWED_LABELS = new Set([
 // ─── State ───────────────────────────────────────────────────────────────────
 let model        = null;
 let videoStream  = null;
-let serialPort   = null;   // Web Serial port object
-let serialReader = null;   // ReadableStreamDefaultReader
+let usbDevice    = null;   // WebUSB device
+let usbEndpoint  = null;   // bulk IN endpoint number
+let usbReading   = false;  // read loop flag
 let facingMode   = 'environment';
 let distance     = 0;
 let detecting    = false;
@@ -396,53 +397,75 @@ async function detectLoop() {
   requestAnimationFrame(detectLoop);
 }
 
-// ─── Web Serial — Arduino ─────────────────────────────────────────────────────
-// Uses Web Serial API (Chrome 89+ desktop, Chrome 105+ Android).
-// Arduino sketch must call Serial.begin(9600) and send lines like:
-//   Serial.println("DIST:340");
+// ─── WebUSB — Arduino (works on Android Chrome via OTG) ──────────────────────
+// Arduino sketch must call Serial.begin(9600) and send: Serial.println("DIST:340");
 // ─────────────────────────────────────────────────────────────────────────────
 async function connectSerial() {
-  if (!('serial' in navigator)) {
-    toast('Web Serial not supported — open in Chrome on desktop or Android.');
+  if (!navigator.usb) {
+    toast('WebUSB not supported — use Chrome on Android or desktop.');
     return;
   }
   const btn = document.getElementById('btnUsb');
   try {
-    serialPort = await navigator.serial.requestPort();
-    await serialPort.open({ baudRate: 9600 });
+    // Show device picker — Arduino will appear here when plugged in via OTG
+    usbDevice = await navigator.usb.requestDevice({ filters: [
+      { vendorId: 0x1A86 },  // CH340 (cheap Nano clones)
+      { vendorId: 0x0403 },  // FTDI
+      { vendorId: 0x2341 },  // Arduino genuine
+      { vendorId: 0x2A03 },  // Arduino.org
+      { vendorId: 0x1B4F },  // Spark Fun
+    ]});
+
+    await usbDevice.open();
+
+    if (usbDevice.configuration === null)
+      await usbDevice.selectConfiguration(1);
+
+    // Find the correct interface — look for CDC or vendor class
+    let iface = null;
+    for (const i of usbDevice.configuration.interfaces) {
+      const alt = i.alternates[0];
+      if ([0xff, 0x0a, 0x02].includes(alt.interfaceClass)) { iface = i; break; }
+    }
+    if (!iface) iface = usbDevice.configuration.interfaces[0];
+    await usbDevice.claimInterface(iface.interfaceNumber);
+
+    // Find the bulk IN endpoint
+    usbEndpoint = null;
+    for (const ep of iface.alternates[0].endpoints) {
+      if (ep.direction === 'in' && ep.type === 'bulk') { usbEndpoint = ep.endpointNumber; break; }
+    }
+    if (usbEndpoint === null) { toast('No bulk IN endpoint found'); return; }
 
     btn.classList.add('active');
     btn.textContent = '🔌 Disconnect';
     btn.onclick     = disconnectSerial;
     setStatus('Arduino connected ✓', 'var(--green)');
     toast('Arduino connected!');
-
-    readSerialLoop();
+    usbReading = true;
+    readUsbLoop();
   } catch(e) {
-    serialPort = null;
+    usbDevice = null;
     if (e.name !== 'NotFoundError') {
-      toast('Serial error: ' + e.message);
+      toast('USB: ' + e.message);
       setStatus('Connect failed', 'var(--red)');
     }
   }
 }
 
-async function readSerialLoop() {
+async function readUsbLoop() {
   const dec = new TextDecoder();
-  serialReader = serialPort.readable.getReader();
   lineBuffer = '';
-
   try {
-    while (true) {
-      const { value, done } = await serialReader.read();
-      if (done) break;
-      lineBuffer += dec.decode(value, { stream: true });
+    while (usbReading && usbDevice && usbDevice.opened) {
+      const result = await usbDevice.transferIn(usbEndpoint, 64);
+      if (!result.data || result.data.byteLength === 0) continue;
+      lineBuffer += dec.decode(result.data, { stream: true });
 
       let nl;
       while ((nl = lineBuffer.indexOf('\n')) >= 0) {
         const line = lineBuffer.slice(0, nl).trim();
         lineBuffer  = lineBuffer.slice(nl + 1);
-
         if (line.startsWith('DIST:')) {
           const d = parseInt(line.slice(5), 10);
           if (!isNaN(d) && d > 0 && d <= 4000) {
@@ -456,11 +479,10 @@ async function readSerialLoop() {
       }
     }
   } catch(e) {
-    // expected on disconnect
+    // disconnected
   } finally {
-    try { serialReader.releaseLock(); } catch(_) {}
-    serialReader = null;
-    distance     = 0;
+    usbReading = false;
+    distance   = 0;
     document.getElementById('valDist').textContent = '-- mm';
     setStatus('Arduino disconnected', 'var(--red)');
     const btn = document.getElementById('btnUsb');
@@ -471,9 +493,9 @@ async function readSerialLoop() {
 }
 
 async function disconnectSerial() {
-  try { if (serialReader) await serialReader.cancel(); } catch(_) {}
-  try { if (serialPort)   await serialPort.close();   } catch(_) {}
-  serialPort = null;
+  usbReading = false;
+  try { if (usbDevice) await usbDevice.close(); } catch(_) {}
+  usbDevice = null;
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -498,5 +520,6 @@ init();
 </script>
 </body>
 </html>
+
 
 
