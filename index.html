@@ -397,52 +397,51 @@ async function detectLoop() {
 }
 
 // ─── Web Serial — Arduino ─────────────────────────────────────────────────────
-// Web Serial is the correct API for reading Arduino Serial.println() output.
-// It works in Chrome 89+ on desktop and Chrome for Android 105+.
-// Your Arduino sketch should do:  Serial.println("DIST:" + String(tof_mm));
+// Uses Web Serial API (Chrome 89+ desktop, Chrome 105+ Android).
+// Arduino sketch must call Serial.begin(9600) and send lines like:
+//   Serial.println("DIST:340");
 // ─────────────────────────────────────────────────────────────────────────────
 async function connectSerial() {
   if (!('serial' in navigator)) {
-    toast('Web Serial not supported — use Chrome 89+ on desktop or Android.');
+    toast('Web Serial not supported — open in Chrome on desktop or Android.');
     return;
   }
   const btn = document.getElementById('btnUsb');
   try {
-    // Prompt the user to pick a port (Arduino will appear here)
     serialPort = await navigator.serial.requestPort();
-
-    // Open at 9600 baud — match this to your Arduino Serial.begin() value
     await serialPort.open({ baudRate: 9600 });
 
     btn.classList.add('active');
-    btn.textContent  = '🔌 Disconnect';
-    btn.onclick      = disconnectSerial;
+    btn.textContent = '🔌 Disconnect';
+    btn.onclick     = disconnectSerial;
     setStatus('Arduino connected ✓', 'var(--green)');
-    toast('Arduino connected — reading DIST:… lines');
+    toast('Arduino connected!');
 
     readSerialLoop();
   } catch(e) {
-    if (e.name !== 'NotFoundError') toast('Serial: ' + e.message);
+    serialPort = null;
+    if (e.name !== 'NotFoundError') {
+      toast('Serial error: ' + e.message);
+      setStatus('Connect failed', 'var(--red)');
+    }
   }
 }
 
 async function readSerialLoop() {
-  // TextDecoderStream lets us read text line-by-line without manual buffering
-  const decoder = new TextDecoderStream();
-  serialPort.readable.pipeTo(decoder.writable);
-  serialReader = decoder.readable.getReader();
+  const dec = new TextDecoder();
+  serialReader = serialPort.readable.getReader();
+  lineBuffer = '';
 
   try {
     while (true) {
       const { value, done } = await serialReader.read();
       if (done) break;
-      if (!value) continue;
+      lineBuffer += dec.decode(value, { stream: true });
 
-      lineBuffer += value;
       let nl;
       while ((nl = lineBuffer.indexOf('\n')) >= 0) {
-        const line   = lineBuffer.slice(0, nl).trim();
-        lineBuffer   = lineBuffer.slice(nl + 1);
+        const line = lineBuffer.slice(0, nl).trim();
+        lineBuffer  = lineBuffer.slice(nl + 1);
 
         if (line.startsWith('DIST:')) {
           const d = parseInt(line.slice(5), 10);
@@ -454,15 +453,14 @@ async function readSerialLoop() {
             document.getElementById('valDist').textContent = '-- mm';
           }
         }
-        // You can handle other message types from Arduino here, e.g.:
-        // if (line.startsWith('INFO:')) toast(line.slice(5));
       }
     }
   } catch(e) {
-    // Port closed or lost
+    // expected on disconnect
   } finally {
+    try { serialReader.releaseLock(); } catch(_) {}
     serialReader = null;
-    distance = 0;
+    distance     = 0;
     document.getElementById('valDist').textContent = '-- mm';
     setStatus('Arduino disconnected', 'var(--red)');
     const btn = document.getElementById('btnUsb');
@@ -475,8 +473,7 @@ async function readSerialLoop() {
 async function disconnectSerial() {
   try { if (serialReader) await serialReader.cancel(); } catch(_) {}
   try { if (serialPort)   await serialPort.close();   } catch(_) {}
-  serialPort = serialReader = null;
-  // UI cleanup happens in the readSerialLoop finally block
+  serialPort = null;
 }
 
 // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -501,4 +498,5 @@ init();
 </script>
 </body>
 </html>
+
 
